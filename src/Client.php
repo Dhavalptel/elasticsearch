@@ -3,6 +3,7 @@
 namespace Simple\ElasticSearch;
 
 use Elasticsearch\ClientBuilder;
+use Illuminate\Support\Arr;
 
 class Client
 {
@@ -18,14 +19,6 @@ class Client
             ->build();
     }
 
-    /**
-     * @param $operator
-     * @return mixed
-     */
-/*    public static function searchOperators($operator)
-    {
-        return Arr::get(config('simple-elasticsearch.operators') );
-    }*/
 
     /**
      * @param $indexName
@@ -100,30 +93,41 @@ class Client
     }
 
     /**
+     * @param $operator
+     * @return mixed
+     */
+    public static function searchOperators($operatorValue, $operatorKey)
+    {
+        $operatorArray = config('simple-elasticsearch.operators.'.$operatorKey);
+        return in_array($operatorValue,$operatorArray);
+    }
+
+    /**
      * @param $fields
      * @param $operator
      * @param $values
-     * @param null $Operator
+     * @param null $customComparison
+     * @param bool $rangeComparison
      * @return array
      */
-    public static function searchParams($fields, $operator, $values, $Operator=null)
+    public static function searchParams($fields, $operator, $values, $customComparison = null, $rangeComparison = false)
     {
         foreach ($fields as $key => $field) {
-            if ($operator == 'EX' || $operator == 'XEX') {
+            if (self::searchOperators($operator, 'equal') || self::searchOperators($operator, 'not_equal')) {
                 $searchParams[] = [
                     'match_phrase' => [
                         $field => $values[$key],
                     ]
                 ];
-            } elseif ($operator == 'GT' || $operator == 'GTE' || $operator == 'LT' || $operator == 'LTE') {
+            } elseif ($rangeComparison) {
                 $searchParams[] = [
                     'range' => [
                         $field => [
-                            $Operator => $values[$key],
+                            $customComparison => $values[$key],
                         ],
                     ],
                 ];
-            } elseif ($operator == 'CT' || $operator == 'XCT') {
+            } elseif (self::searchOperators($operator, 'like') || self::searchOperators($operator, 'not_like')) {
                 $search = str_replace(' ',' AND ',$values[$key]);
                 $search = (preg_match('/[^A-Za-z0-9]/', $search)) ? '%'.$search.'%':'*'.$search.'*';
                 $searchParams[] = [
@@ -145,7 +149,7 @@ class Client
      * @param $values
      * @return array
      */
-    public static function search($index, $size, $fields, $operator, $values)
+    public static function search($index, $size, $fields, $operator, $values, $rangeComparison = false)
     {
         $params = [
             'index' => $index,
@@ -153,38 +157,15 @@ class Client
         ];
 
         switch ($operator) {
-            case 'EX' ||  'CT':
+            case (self::searchOperators($operator, 'equal')) ||  (self::searchOperators($operator, 'like')):
                 $params['body']['query']['bool']['must'] = self::searchParams($fields, $operator, $values);
                 break;
 
-            case 'XEX' || 'XCT':
+            case (self::searchOperators($operator, 'not_equal')) ||  (self::searchOperators($operator, 'not_like')):
                 $params['body']['query']['bool']['must_not'] = self::searchParams($fields, $operator, $values);
                 break;
 
-            case 'GT':
-            case 'GTE':
-            case 'LT':
-            case 'LTE':
-                switch ($operator) {
-                    case 'GT':
-                        $Operator = 'gt';
-                        break;
-
-                    case 'GTE':
-                        $Operator = 'gte';
-                        break;
-
-                    case 'LT':
-                        $Operator = 'lt';
-                        break;
-
-                    case 'LTE':
-                        $Operator = 'lte';
-                        break;
-                }
-                $params['body']['query']['bool']['filter'] = self::searchParams($fields, $operator, $values, $Operator);
-                break;
-            case 'HAS':
+            case (self::searchOperators($operator, 'where')):
                 $params['body']['query']['bool']['must'] = [
                     'terms' => [
                         $fields[0] => $values,
@@ -192,14 +173,35 @@ class Client
                 ];
                 break;
 
-            case 'XHAS':
+            case (self::searchOperators($operator, 'not_where')):
                 $params['body']['query']['bool']['must_not'] = [
                     'terms' => [
                         $fields[0] => $values,
                     ]
                 ];
                 break;
+            case ($rangeComparison):
+                switch ($operator) {
+                    case (self::searchOperators($operator, 'range_comparison.greater_than')):
+                        $Operator = 'gt';
+                        break;
 
+                    case (self::searchOperators($operator, 'range_comparison.greater_than_equal')):
+                        $Operator = 'gte';
+                        break;
+
+                    case (self::searchOperators($operator, 'range_comparison.less_than')):
+                        $Operator = 'lt';
+                        break;
+
+                    case (self::searchOperators($operator, 'range_comparison.less_than_equal')):
+                        $Operator = 'lte';
+                        break;
+                    default:
+                        break;
+                }
+                $params['body']['query']['bool']['filter'] = self::searchParams($fields, $operator, $values, $Operator, true);
+                break;
             default:
                 break;
         }
