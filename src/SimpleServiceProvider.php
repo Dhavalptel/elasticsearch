@@ -12,7 +12,7 @@ class SimpleServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->publishes([
-            __DIR__.'/../config/elastic.php' => config_path('elastic.php')
+            __DIR__.'/../config/simple-elasticsearch.php' => config_path('simple-elasticsearch.php')
         ], 'simple-elasticsearch');
     }
 }
