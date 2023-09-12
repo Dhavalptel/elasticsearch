@@ -14,7 +14,7 @@ class Client
     public static function client()
     {
         return ClientBuilder::create()
-            ->setHosts(config('simple-elasticsearch.connection'))
+            ->setConnectionParams(config('simple-elasticsearch.connection'))
             ->setRetries(0)
             ->build();
     }
