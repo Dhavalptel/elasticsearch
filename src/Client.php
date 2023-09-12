@@ -99,7 +99,8 @@ class Client
             $collection->forPage($page, $perPage),
             $collection->count(),
             $perPage,
-            $page
+            $page,
+            ['path' => url()->full()]
         );
         unset($data['hits']['hits']);
         $metadata = [
@@ -167,6 +168,17 @@ class Client
                 ];
             }
         }
+
+        if (self::searchOperators($operator, 'where') || self::searchOperators($operator, 'not_where')) {
+            foreach ($values as $key => $value) {
+                $searchParams[] = [
+                    'match' => [
+                        $fields[0] => $value,
+                    ]
+                ];
+            }
+        }
+
         return $searchParams;
     }
 
@@ -190,24 +202,12 @@ class Client
                 $params['body']['query']['bool']['must'] = self::searchParams($fields, $operator, $values);
                 break;
 
-            case (self::searchOperators($operator, 'not_equal')) ||  (self::searchOperators($operator, 'not_like')):
+            case (self::searchOperators($operator, 'not_equal')) ||  (self::searchOperators($operator, 'not_like') || self::searchOperators($operator, 'not_where')):
                 $params['body']['query']['bool']['must_not'] = self::searchParams($fields, $operator, $values);
                 break;
 
             case (self::searchOperators($operator, 'where')):
-                $params['body']['query']['bool']['must'] = [
-                    'terms' => [
-                        $fields[0] => $values,
-                    ]
-                ];
-                break;
-
-            case (self::searchOperators($operator, 'not_where')):
-                $params['body']['query']['bool']['must_not'] = [
-                    'terms' => [
-                        $fields[0] => $values,
-                    ]
-                ];
+                $params['body']['query']['bool']['should'] = self::searchParams($fields, $operator, $values);
                 break;
 
             case (self::searchOperators($operator, 'range_comparison.greater_than')):
