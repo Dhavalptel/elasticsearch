@@ -13,9 +13,8 @@ class Client
      */
     public static function client()
     {
-        $connection = config('simple-elasticsearch.connection.host').':'.config('simple-elasticsearch.connection.port');
         return ClientBuilder::create()
-            ->setHosts([$connection])
+            ->setHosts(config('simple-elasticsearch.connection'))
             ->setRetries(0)
             ->build();
     }

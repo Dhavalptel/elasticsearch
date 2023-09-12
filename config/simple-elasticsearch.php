@@ -10,6 +10,8 @@ return [
     'connection' => [
         'host' => env('ELASTIC_HOST'),
         'port' => env('ELASTIC_PORT'),
+        'user' => env('ELASTIC_USER'),
+        'pass' => env('ELASTIC_PASS')
     ],
 
     /**
