@@ -3,7 +3,8 @@
 namespace Simple\ElasticSearch;
 
 use Elasticsearch\ClientBuilder;
-use Illuminate\Support\Arr;
+use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Collection;
 
 class Client
 {
@@ -89,7 +90,31 @@ class Client
      */
     public static function get($params)
     {
-        return self::client()->search($params);
+        $data = self::client()->search($params);
+        $perPage = 10;
+
+        $collection = new Collection($data['hits']['hits']);
+        $page = request()->input('page', 1);
+
+        $paginatedData = new LengthAwarePaginator(
+            $collection->forPage($page, $perPage),
+            $collection->count(),
+            $perPage,
+            $page
+        );
+        unset($data['hits']['hits']);
+        $metadata = [
+            'took' => $data['took'],
+            'timed_out' => $data['timed_out'],
+            '_shards' => $data['_shards'],
+            'hits' => $data['hits'],
+        ];
+        $response = [
+            'data' => $paginatedData,
+            'metadata' => $metadata,
+        ];
+
+        return $response;
     }
 
     /**
@@ -99,7 +124,12 @@ class Client
     public static function searchOperators($operatorValue, $operatorKey)
     {
         $operatorArray = config('simple-elasticsearch.operators.'.$operatorKey);
-        return in_array($operatorValue,$operatorArray);
+        if (str_contains($operatorKey, '.')) {
+            list($firstKey, $secondKey) = explode('.', $operatorKey);
+            return in_array($operatorValue, $operatorArray[$firstKey][$secondKey]);
+        } else {
+            return in_array($operatorValue,$operatorArray[$operatorKey]);
+        }
     }
 
     /**
@@ -110,7 +140,7 @@ class Client
      * @param bool $rangeComparison
      * @return array
      */
-    public static function searchParams($fields, $operator, $values, $customComparison = null, $rangeComparison = false)
+    public static function searchParams($fields, $operator, $values, $customComparison = null)
     {
         foreach ($fields as $key => $field) {
             if (self::searchOperators($operator, 'equal') || self::searchOperators($operator, 'not_equal')) {
@@ -119,7 +149,7 @@ class Client
                         $field => $values[$key],
                     ]
                 ];
-            } elseif ($rangeComparison) {
+            } elseif ($customComparison) {
                 $searchParams[] = [
                     'range' => [
                         $field => [
@@ -149,7 +179,7 @@ class Client
      * @param $values
      * @return array
      */
-    public static function search($index, $size, $fields, $operator, $values, $rangeComparison = false)
+    public static function search($index, $size, $fields, $operator, $values)
     {
         $params = [
             'index' => $index,
@@ -180,27 +210,21 @@ class Client
                     ]
                 ];
                 break;
-            case ($rangeComparison):
-                switch ($operator) {
-                    case (self::searchOperators($operator, 'range_comparison.greater_than')):
-                        $Operator = 'gt';
-                        break;
 
-                    case (self::searchOperators($operator, 'range_comparison.greater_than_equal')):
-                        $Operator = 'gte';
-                        break;
+            case (self::searchOperators($operator, 'range_comparison.greater_than')):
+                $params['body']['query']['bool']['filter'] = self::searchParams($fields, $operator, $values, 'gt');
+                break;
 
-                    case (self::searchOperators($operator, 'range_comparison.less_than')):
-                        $Operator = 'lt';
-                        break;
+            case (self::searchOperators($operator, 'range_comparison.greater_than_equal')):
+                $params['body']['query']['bool']['filter'] = self::searchParams($fields, $operator, $values, 'gte');
+                break;
 
-                    case (self::searchOperators($operator, 'range_comparison.less_than_equal')):
-                        $Operator = 'lte';
-                        break;
-                    default:
-                        break;
-                }
-                $params['body']['query']['bool']['filter'] = self::searchParams($fields, $operator, $values, $Operator, true);
+            case (self::searchOperators($operator, 'range_comparison.less_than')):
+                $params['body']['query']['bool']['filter'] = self::searchParams($fields, $operator, $values, 'lt');
+                break;
+
+            case (self::searchOperators($operator, 'range_comparison.less_than_equal')):
+                $params['body']['query']['bool']['filter'] = self::searchParams($fields, $operator, $values, 'lte');
                 break;
             default:
                 break;
