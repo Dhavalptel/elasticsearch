@@ -123,7 +123,7 @@ class Client
      */
     public static function searchOperators($operatorValue, $operatorKey)
     {
-        $operatorArray = config('simple-elasticsearch.operators.'.$operatorKey);
+        $operatorArray = config('simple-elasticsearch.operators');
         if (str_contains($operatorKey, '.')) {
             list($firstKey, $secondKey) = explode('.', $operatorKey);
             return in_array($operatorValue, $operatorArray[$firstKey][$secondKey]);
