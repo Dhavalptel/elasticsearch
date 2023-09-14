@@ -8,10 +8,19 @@ return [
      * Elasticsearch connection
      */
     'connection' => [
-        'host' => env('ELASTIC_HOST'),
-        'port' => env('ELASTIC_PORT'),
-        'user' => env('ELASTIC_USER'),
-        'pass' => env('ELASTIC_PASS')
+        'type' => 'basic' //api
+    ],
+
+    /**
+     * Elasticsearch credentials
+     */
+    'credentials' => [
+        'host' => env('ELASTIC_HOST',null),
+        'port' => env('ELASTIC_PORT',null),
+        'user' => env('ELASTIC_USER',null),
+        'pass' => env('ELASTIC_PASS',null),
+        'id' => env('ELASTIC_USER',null),
+        'key' => env('ELASTIC_PASS',null)
     ],
 
     /**

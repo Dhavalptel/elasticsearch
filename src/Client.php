@@ -13,8 +13,23 @@ class Client
      */
     public static function client()
     {
-        return ClientBuilder::create()
-            ->setConnectionParams(config('simple-elasticsearch.connection'))
+        $connectionType = config('simple-elasticsearch.connection.type');
+
+        $clientBuilder = ClientBuilder::create()
+            ->setHosts(config('simple-elasticsearch.credentials.host') .':'.config('simple-elasticsearch.credentials.port'));
+
+        if ($connectionType === 'basic') {
+            $clientBuilder->setBasicAuthentication(
+                config('simple-elasticsearch.credentials.user'),
+                config('simple-elasticsearch.credentials.pass')
+            );
+        } elseif ($connectionType === 'api') {
+            $clientBuilder->setApiKey(
+                config('simple-elasticsearch.credentials.id'),
+                config('simple-elasticsearch.credentials.key')
+            );
+        }
+        return $clientBuilder
             ->setRetries(0)
             ->build();
     }
