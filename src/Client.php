@@ -16,7 +16,10 @@ class Client
         $connectionType = config('simple-elasticsearch.connection.type');
 
         $clientBuilder = ClientBuilder::create()
-            ->setHosts(config('simple-elasticsearch.credentials.host') .':'.config('simple-elasticsearch.credentials.port'));
+            ->setHosts([
+                'host' => config('simple-elasticsearch.credentials.host'),
+                'port' => config('simple-elasticsearch.credentials.port')
+            ]);
 
         if ($connectionType === 'basic') {
             $clientBuilder->setBasicAuthentication(
