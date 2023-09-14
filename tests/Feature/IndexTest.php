@@ -85,7 +85,6 @@ test('store', function () {
     $params = [
         'index' => $index,
         'id' => $id,
-        'type' => $type,
         'body' => [
             "name" => "Voluptas accusantium.",
             "salary" => 11116
