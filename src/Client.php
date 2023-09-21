@@ -5,6 +5,11 @@ namespace Simple\ElasticSearch;
 use Elasticsearch\ClientBuilder;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
+use Simple\ElasticSearch\Queries\FullTextQueries;
+use Simple\ElasticSearch\Queries\MatchPhrase;
+use Simple\ElasticSearch\Queries\SpecializedQueries;
+use Simple\ElasticSearch\Queries\TermLevelQueries;
+use function Pest\match;
 
 class Client
 {
@@ -127,77 +132,25 @@ class Client
             '_shards' => $data['_shards'],
             'hits' => $data['hits'],
         ];
-        $response = [
+        return [
             'data' => $paginatedData,
             'metadata' => $metadata,
         ];
-
-        return $response;
     }
 
     /**
-     * @param $operator
-     * @return mixed
+     * @param $operatorValue
+     * @return int|string|null
      */
-    public static function searchOperators($operatorValue, $operatorKey)
+    public static function searchOperators($operatorValue)
     {
         $operatorArray = config('simple-elasticsearch.operators');
-        if (str_contains($operatorKey, '.')) {
-            list($firstKey, $secondKey) = explode('.', $operatorKey);
-            return in_array($operatorValue, $operatorArray[$firstKey][$secondKey]);
-        } else {
-            return in_array($operatorValue,$operatorArray[$operatorKey]);
-        }
-    }
-
-    /**
-     * @param $fields
-     * @param $operator
-     * @param $values
-     * @param null $customComparison
-     * @param bool $rangeComparison
-     * @return array
-     */
-    public static function searchParams($fields, $operator, $values, $customComparison = null)
-    {
-        foreach ($fields as $key => $field) {
-            if (self::searchOperators($operator, 'equal') || self::searchOperators($operator, 'not_equal')) {
-                $searchParams[] = [
-                    'match_phrase' => [
-                        $field => $values[$key],
-                    ]
-                ];
-            } elseif ($customComparison) {
-                $searchParams[] = [
-                    'range' => [
-                        $field => [
-                            $customComparison => $values[$key],
-                        ],
-                    ],
-                ];
-            } elseif (self::searchOperators($operator, 'like') || self::searchOperators($operator, 'not_like')) {
-                $search = str_replace(' ',' AND ',$values[$key]);
-                $search = (preg_match('/[^A-Za-z0-9]/', $search)) ? '%'.$search.'%':'*'.$search.'*';
-                $searchParams[] = [
-                    'query_string' => [
-                        'query' => $search,
-                        'default_field' => $field,
-                    ],
-                ];
+        foreach (array_merge($operatorArray, $operatorArray['range_comparison']) as $key => $item) {
+            if (in_array($operatorValue, $item)) {
+                return $key;
             }
         }
-
-        if (self::searchOperators($operator, 'where') || self::searchOperators($operator, 'not_where')) {
-            foreach ($values as $key => $value) {
-                $searchParams[] = [
-                    'match' => [
-                        $fields[0] => $value,
-                    ]
-                ];
-            }
-        }
-
-        return $searchParams;
+        return null;
     }
 
     /**
@@ -215,36 +168,15 @@ class Client
             'size' => $size,
         ];
 
-        switch ($operator) {
-            case (self::searchOperators($operator, 'equal')) ||  (self::searchOperators($operator, 'like')):
-                $params['body']['query']['bool']['must'] = self::searchParams($fields, $operator, $values);
-                break;
+        $searchOperator = self::searchOperators($operator);
+        $queryMethod = self::getQueryMethod($searchOperator);
 
-            case (self::searchOperators($operator, 'not_equal')) ||  (self::searchOperators($operator, 'not_like') || self::searchOperators($operator, 'not_where')):
-                $params['body']['query']['bool']['must_not'] = self::searchParams($fields, $operator, $values);
-                break;
+        if ($queryMethod) {
+            $class = key($queryMethod);
+            $method = current($queryMethod);
+            (is_array($method) ? list($customOperator, $method) = $method : $customOperator = $searchOperator);
 
-            case (self::searchOperators($operator, 'where')):
-                $params['body']['query']['bool']['should'] = self::searchParams($fields, $operator, $values);
-                break;
-
-            case (self::searchOperators($operator, 'range_comparison.greater_than')):
-                $params['body']['query']['bool']['filter'] = self::searchParams($fields, $operator, $values, 'gt');
-                break;
-
-            case (self::searchOperators($operator, 'range_comparison.greater_than_equal')):
-                $params['body']['query']['bool']['filter'] = self::searchParams($fields, $operator, $values, 'gte');
-                break;
-
-            case (self::searchOperators($operator, 'range_comparison.less_than')):
-                $params['body']['query']['bool']['filter'] = self::searchParams($fields, $operator, $values, 'lt');
-                break;
-
-            case (self::searchOperators($operator, 'range_comparison.less_than_equal')):
-                $params['body']['query']['bool']['filter'] = self::searchParams($fields, $operator, $values, 'lte');
-                break;
-            default:
-                break;
+            $params['body']['query'] = ("Simple\\ElasticSearch\\Queries\\".$class)::$method($fields, $operator, $values, $customOperator);
         }
 
         return self::get($params);
@@ -298,4 +230,34 @@ class Client
 
         return self::client()->update($params);
     }
+
+    /**
+     * @param $operator
+     * @return mixed|null
+     */
+    public static function getQueryMethod($operator)
+    {
+        $queryMethods = [
+            'equal' => ['FullTextQueries' => 'match_phrase'],
+            'not_equal' => ['FullTextQueries' => 'match_phrase'],
+            'like' => ['FullTextQueries' => 'query_string'],
+            'not_like' => ['FullTextQueries' => 'query_string'],
+            'where' => ['FullTextQueries' => 'match'],
+            'not_where' => ['FullTextQueries' => 'match'],
+            'greater_than' => ['TermLevelQueries' => ['gt','range']],
+            'greater_than_equal' => ['TermLevelQueries' => ['gte','range']],
+            'less_than' => ['TermLevelQueries' => ['lt', 'range']],
+            'less_than_equal' => ['TermLevelQueries' => ['lte','range']],
+            'search' => ['FullTextQueries' => 'match'],
+            'multi-match' =>['FullTextQueries' =>  'multi_match'],
+            'more-like-this' => ['SpecializedQueries' => 'more_like_this'],
+            'exists' => ['TermLevelQueries' => 'exists'],
+            'id-exists' => ['TermLevelQueries' => 'ids'],
+            'prefix' => ['TermLevelQueries' =>  'prefix'],
+            'between' => ['TermLevelQueries' => ['between','range']],
+        ];
+
+        return $queryMethods[$operator] ?: null;
+    }
+
 }

@@ -34,6 +34,7 @@ return [
         ],
         'not_equal' => [
             '!=',
+            '<>',
             'XEX',
             'not equal'
         ],
@@ -78,6 +79,28 @@ return [
         'not_where' => [
             'not where in',
             'XHAS',
-        ]
+        ],
+        'search' => [
+            'find',
+            'search',
+        ],
+        'multi-match' => [
+            'multi-match',
+        ],
+        'more-like-this' => [
+            'more-like-this',
+        ],
+        'exists' => [
+            'exists',
+        ],
+        'id-exists' => [
+            'id-exists',
+        ],
+        'prefix' => [
+            'prefix',
+        ],
+        'between' => [
+            'between',
+        ],
     ]
 ];
