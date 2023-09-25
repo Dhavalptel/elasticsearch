@@ -47,7 +47,7 @@ class TermLevelQueries {
      * @param $values
      * @return mixed
      */
-    public static function ids($values)
+    public static function ids($fields, $values)
     {
         $params['ids'] = [
             'values' => $values,

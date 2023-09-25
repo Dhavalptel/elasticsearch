@@ -176,7 +176,7 @@ class Client
             $method = current($queryMethod);
             (is_array($method) ? list($customOperator, $method) = $method : $customOperator = $searchOperator);
 
-            $params['body']['query'] = ("Simple\\ElasticSearch\\Queries\\".$class)::$method($fields, $operator, $values, $customOperator);
+            $params['body']['query'] = (__NAMESPACE__."\Queries\\".$class)::$method($fields, $values, $customOperator);
         }
 
         return self::get($params);
