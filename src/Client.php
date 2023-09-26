@@ -5,11 +5,7 @@ namespace Simple\ElasticSearch;
 use Elasticsearch\ClientBuilder;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
-use Simple\ElasticSearch\Queries\FullTextQueries;
 use Simple\ElasticSearch\Queries\MatchPhrase;
-use Simple\ElasticSearch\Queries\SpecializedQueries;
-use Simple\ElasticSearch\Queries\TermLevelQueries;
-use function Pest\match;
 
 class Client
 {
@@ -50,16 +46,16 @@ class Client
      */
     public static function createIndex($indexName, $tableData)
     {
-        foreach ($tableData['fields'] as $field) {
-            if ($field['datatype'] == 'integer') {
-                $properties[$field['column_name']] = [
-                    'type' => 'text',
-                ];
+        if (isset($tableData['fields'])) {
+            foreach ($tableData['fields'] as $field) {
+                if ($field['datatype'] == 'integer') {
+                    $properties[$field['column_name']] = [
+                        'type' => 'text',
+                    ];
+                }
             }
-        }
-        $params = [
-            'index' => $indexName,
-            'body' => [
+
+            $body = [
                 'settings' => [
                     'number_of_shards' => 1,
                     'number_of_replicas' => 0,
@@ -70,31 +66,38 @@ class Client
                     ],
                     'properties' => $properties
                 ],
-            ],
+            ];
+        } else {
+            $relations = array_values($tableData->getQueueableRelations());
+            $mappings = self::nestedMapping($relations);
+            $body = [
+                'mappings' => $mappings
+            ];
+        }
+
+        $params = [
+            'index' => $indexName,
+            'body' => $body
         ];
 
-        // Create the index
-        $response = self::client()->indices()->create($params);
-
-        return ($response['acknowledged']) ? "Index ".$indexName." created successfully." : "Failed to create index ".$indexName;
+        return self::client()->indices()->create($params);
     }
 
     /**
      * @param $index
-     * @param $type
-     * @param $id
-     * @param $body
+     * @param $data
      * @return array
      */
-    public static function store($index, $type, $id, $body)
+    public static function store($index, $data)
     {
         $params = [
             'index' => $index,
-            'id' => $id,
-            'type' => $type,
-            'body' => $body
         ];
-        return self::client()->index($params);
+        foreach ($data as $value) {
+            $params['body'] = $value;
+            $response = self::client()->index($params);
+        }
+        return $response;
     }
 
     /**
@@ -161,11 +164,19 @@ class Client
      * @param $values
      * @return array
      */
-    public static function search($index, $size, $fields, $operator, $values)
+    /**
+     * @param $index
+     * @param $fields
+     * @param $operator
+     * @param $values
+     * @param null $nestedData
+     * @return array
+     */
+    public static function search($index, $fields, $operator, $values, $nestedData=null)
     {
         $params = [
             'index' => $index,
-            'size' => $size,
+            'size' => 10000,
         ];
 
         $searchOperator = self::searchOperators($operator);
@@ -175,8 +186,10 @@ class Client
             $class = key($queryMethod);
             $method = current($queryMethod);
             (is_array($method) ? list($customOperator, $method) = $method : $customOperator = $searchOperator);
+            $methodParams = ($searchOperator == 'relation') ? [$fields, $values, $customOperator, $nestedData] : [$fields, $values, $customOperator];
+            $methodName = (__NAMESPACE__."\Queries\\".$class)."::".$method;
 
-            $params['body']['query'] = (__NAMESPACE__."\Queries\\".$class)::$method($fields, $values, $customOperator);
+            $params['body']['query'] = call_user_func_array($methodName, $methodParams);
         }
 
         return self::get($params);
@@ -255,9 +268,28 @@ class Client
             'id-exists' => ['TermLevelQueries' => 'ids'],
             'prefix' => ['TermLevelQueries' =>  'prefix'],
             'between' => ['TermLevelQueries' => ['between','range']],
+            'relation' => ['JoiningQueries' => 'nested'],
         ];
 
         return $queryMethods[$operator] ?: null;
+    }
+
+    /**
+     * @param $relations
+     * @return array
+     */
+    public static function nestedMapping($relations)
+    {
+        $mapping = [];
+        foreach ($relations as $relation) {
+            $nestedMapping = &$mapping;
+            $parts = explode('.', $relation);
+            foreach ($parts as $part) {
+                $nestedMapping = &$nestedMapping['properties'][$part];
+            }
+            $nestedMapping = ['type' => 'nested'];
+        }
+        return $mapping;
     }
 
 }
